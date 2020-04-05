@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Using Parcel with OpenLayers</title>
+    <script src="https://cdn.polyfill.io/v2/polyfill.min.js?features=fetch,requestAnimationFrame,Element.prototype.classList,URL"></script>
+    <style>
+      .heatmap {
+        /* width: 400px; */
+        height: 450px;
+      }
+    </style>
+  </head>
+  <body>
+
+    <div class="wrapper">
+        <h1>COVID19 symptoms with mock data</h1>
+    </div>
+    <br style="clear:both" />
+    <h2>Dry coughs across the country</h2>
+    <div>
+        <div class="heatmap" id="map-cough"></div>
+    </div>
+
+    <h2>Fever onsets across the country</h2>
+    <div>
+        <div class="heatmap" id="map-fever"></div>
+    </div>
+    <script src="./index.js"></script>
+  </body>
+</html>
