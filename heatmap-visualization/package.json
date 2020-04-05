@@ -8,6 +8,12 @@
     "start": "parcel index.html",
     "build": "parcel build --public-url . index.html"
   },
-  "author": "",
-  "license": "ISC"
+  "author": "Jan Margeta",
+  "license": "TBD",
+  "devDependencies": {
+    "parcel-bundler": "^1.12.4"
+  },
+  "dependencies": {
+    "ol": "^6.3.0"
+  }
 }
