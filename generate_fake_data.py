@@ -37,6 +37,11 @@ class FakeUser:
         self.home_location = fake.local_latlng(country_code='SK')
         self.mobility =  MAX_MOBILITY * random.random()
         self.general_health = random.random()
+        self.age = 18 + 80 * random.random()
+        self.sex = random.choice(['M', 'F', 'Other'])
+
+        self.exposure_abroad = random.random() > 0.9
+        self.exposure_to_quarantined_or_sick = random.random() > 0.9
 
     def sample(self):
         """Create a sample event"""
@@ -44,46 +49,188 @@ class FakeUser:
         global current_date # consider an alternative
         random_second = MAX_NUM_SECS_BETWEEN_EVENTS * random.random()
         current_date = current_date + dt.timedelta(seconds=random_second)
+        
+        temperature = 36 + 4 * (1 - self.general_health) * random.random()
+        symptoms = {
+            'dry_cough': random.random() > self.general_health,
+            'fever': temperature >= 38,
+            'temperature_under_38': temperature < 38,
+            'temperature_over_38': temperature >= 38,
+            'temperature_idk': False,
+            'difficulty_breathing': random.random() > self.general_health,
+            'headache': random.random() > self.general_health,
+            'taste_and_smell_loss': random.random() > self.general_health,
+            'headache': random.random() > self.general_health,
+            'sore_throat': random.random() > self.general_health,
+            'weakness': random.random() > self.general_health,
+            "chest_pain": random.random() > self.general_health,
+            "chills": random.random() > self.general_health,
+            "sweating": random.random() > self.general_health,
+            "stuffy_nose": random.random() > self.general_health,
+            "runny_nose": random.random() > self.general_health,
+            "diarrhea": random.random() > self.general_health,
+            "watery_itchy_eyes": random.random() > self.general_health,
+
+        }
+    
+        
+        asymptomatic = not any(symptoms.values())
         data = {
-           'user_id': self.id,
-           'timestamp': current_date,
-           'location': {
-               'lat': fake.coordinate(
-                   center=self.home_location[0],
-                   radius=self.mobility
-                ),
-               'lng': fake.coordinate(
-                   center=self.home_location[1],
-                   radius=self.mobility
-                )
-           },
-           'cough': random.random() > self.general_health,
-           'temperature': random.random() > self.general_health,
+            'customer_id': self.id,
+            'age': int(self.age),
+            'sex': self.sex,
+            'lat': float(fake.coordinate(
+                 center=self.home_location[0],
+                 radius=self.mobility
+            )),
+            'lon': float(fake.coordinate(
+                 center=self.home_location[1],
+                 radius=self.mobility
+            )),
+            # INFO: location must go away, for real data add lat - lon
+            'location_iq': {"address": ""},
+            'symptoms': symptoms,
+             **symptoms,
+            "nonsymptomatic": asymptomatic,
+
+            # 3. Other important information
+            'exposure_abroad': self.exposure_abroad,
+            'exposure_to_quarantined_or_sick': self.exposure_to_quarantined_or_sick,
+            'test_time': dt.datetime.now(tz=pytz.UTC),
+            "test_result": random.random() > 0.99,
         }
 
         return data
 
+# def persist_datapoint(conn, data):
+#     INSERT_EVENT = """
+# INSERT INTO geotable (customer_id, timestamp, location, age, sex, symptoms, cough, fever, dificulty_breathing, weakness, headache, taste_and_smell_loss, nonsymptomatic)
+# VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+# """
 
-def persist_datapoint(conn, data):
-    INSERT_EVENT = """
-INSERT INTO geotable (user_id, timestamp, location, cough, temperature)
-VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s)
-"""
+#     cursor = conn.cursor()
 
+# #   id serial PRIMARY KEY,
+# #   customer_id VARCHAR(36),
+# #   timestamp TIMESTAMP,
+# #   location geography(POINT, 4326),
+# #   age int,
+# #   sex VARCHAR(100),
+# #   symptoms json,
+# #   cough boolean,
+# #   fever boolean,
+# #   dificulty_breathing boolean,
+# #   weakness boolean,
+# #   headache boolean,
+# #   taste_and_smell_loss boolean,
+# #   nonsymptomatic boolean
+
+#     cursor.execute(
+#         INSERT_EVENT, (
+#             data['customer_id'],
+#             data['timestamp'],
+#             data['location']['lat'],
+#             data['location']['lng'],
+#             data['age'],
+#             data['sex'],
+#             data['dry_cough'],
+#             data['fever'],
+#             data['dificulty_breathing'],
+#             data['weakness'],
+#             data['headache'],
+#             data['taste_and_smell_loss'],
+#             data['nonsymptomatic'],
+#        )
+#     )
+#     conn.commit()
+
+
+
+
+def persist_datapoint(conn, content):
     cursor = conn.cursor()
+    # Variables to insert into postgres
+    # FIX: this should not be customer id but some expirable customer/user token
+    customer_id = content['customer_id']
+    lat = content['lat']
+    lon = content['lon']
 
-    cursor.execute(
-        INSERT_EVENT, (
-            data['user_id'],
-            data['timestamp'],
-            data['location']['lat'],
-            data['location']['lng'],
-            data['cough'],
-            data['temperature'],
-       )
-    )
+    # 2a. Main symptoms
+    dry_cough = content["dry_cough"]
+    fever = content["fever"]
+    temperature_under_38 = content["temperature_under_38"]
+    temperature_idk = content["temperature_idk"]
+    temperature_over_38 = content["temperature_over_38"]
+    taste_and_smell_loss = content["taste_and_smell_loss"]
+    difficulty_breathing = content["difficulty_breathing"]
+    # 2b. Other symptoms
+    headache = content["headache"]
+    sore_throat = content["sore_throat"]
+    weakness = content["weakness"]
+    chest_pain = content["chest_pain"]
+    chills = content["chills"]
+    sweating = content["sweating"]
+    stuffy_nose = content["stuffy_nose"]
+    runny_nose = content["runny_nose"]
+    diarrhea = content["diarrhea"]
+    watery_itchy_eyes = content["watery_itchy_eyes"]
+    # 3. Other important information
+    exposure_abroad = content["exposure_abroad"]
+    exposure_to_quarantined_or_sick = content["exposure_to_quarantined_or_sick"]
+    test_time = content["test_time"]
+    test_result = content["test_result"]
+    # TODO REMOVE too detailed information BEFORE LIVE
+    location_iq = {"address": ""} #reverse_geocode_locationiq(lat, lon)
+
+    # Remember to close SQL resources declared while running this function.
+    # Keep any declared in global scope (e.g. pg_pool) for later reuse.
+    
+    sql = f"""INSERT INTO symptom_report (
+            -- STUFF
+            customer_id, updated_at, 
+            -- MAIN SYMPTOMS
+            dry_cough, fever,
+            temperature_under_38, temperature_idk, temperature_over_38, 
+            taste_and_smell_loss, difficulty_breathing,
+            -- SECONDARY SYMPTOMS
+            headache,sore_throat,weakness,chest_pain,chills,sweating,stuffy_nose,runny_nose,
+            diarrhea,watery_itchy_eyes,
+            -- OTHER
+            exposure_abroad,exposure_to_quarantined_or_sick,test_time,test_result,
+            -- LOCATION
+            latlon,
+            address
+        ) VALUES (
+            -- STUFF
+            %s, NOW(), 
+            -- MAIN SYMPTOMS
+            {dry_cough}, {fever},
+            {temperature_under_38}, {temperature_idk}, {temperature_over_38},
+            {taste_and_smell_loss}, {difficulty_breathing},
+            -- SECONDARY SYMPTOMS
+            {headache},{sore_throat},{weakness},{chest_pain},{chills},{sweating},{stuffy_nose},{runny_nose},
+            {diarrhea},{watery_itchy_eyes},
+            -- OTHER
+            {exposure_abroad},{exposure_to_quarantined_or_sick},(%s),{test_result},
+            -- LOCATION
+            ST_SetSRID(ST_Point({lat}, {lon}), 4326)::geography, 
+            %s
+        ) RETURNING customer_id;"""
+
+    # TODO: fix all the SQL injections - either use SQLAlchemy or similar, or at least a dict with the value names,
+    # definitely not string interpolations 
+    cursor.execute(sql, (customer_id, test_time,'{}'))
     conn.commit()
 
+
+
+import requests
+
+def post_datapoint(data):
+    res = requests.post('https://europe-west3-hackthevirus.cloudfunctions.net/insert_location', json=data)
+    breakpoint()
+    print(res.json())
+    return res.json()
 
 if __name__ == "__main__":
     fake_users = [FakeUser()]
@@ -111,6 +258,10 @@ if __name__ == "__main__":
         # logger.debug(f'Selected user {user.home_location}')
         data = user.sample()
         # logger.info(data)
+        print(data)
+        
+        # posted = post_datapoint(data)
+        
         persist_datapoint(conn, data)
 
     # cursor = conn.cursor()
