@@ -205,12 +205,14 @@ def persist_datapoint(conn, content):
 
 
 def post_report(report):
+    # res = requests.post('http://0.0.0.0:5000/user-report_symptoms', json=report)
     res = requests.post('https://europe-west3-hackthevirus.cloudfunctions.net/user-report_symptoms', json=report)
     print(res.status_code)
     print(res.json())
 
 
 def post_user(user):
+    # res = requests.post('http://0.0.0.0:5000/user', json=user)
     res = requests.post('https://europe-west3-hackthevirus.cloudfunctions.net/user', json=user)
     print(res.status_code)
     print(res.json())
@@ -222,7 +224,7 @@ if __name__ == "__main__":
 
     NUM_EVENTS = 15000
     R0_star = 1.01
-    new_user_proba = 1
+    new_user_proba = .5
 
     # conn = psycopg2.connect(
     #     host=os.getenv('DB_HOST'),
