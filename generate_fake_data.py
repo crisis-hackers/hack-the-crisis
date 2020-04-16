@@ -3,8 +3,17 @@ import random
 import uuid
 
 import pytz
+import requests
 from faker import Faker
 from logzero import logger
+from faker.providers.geo import Provider
+
+import sk_municipality_provider
+
+
+# monkey-patch the Faker to contain more slovak municipalities
+Provider.land_coords = Provider.land_coords + sk_municipality_provider.LAND_COORDS
+
 
 # global time
 current_date = dt.datetime(2020, 1, 27, tzinfo=pytz.UTC)
@@ -193,8 +202,6 @@ def persist_datapoint(conn, content):
     cursor.execute(sql, (customer_id, test_time, '{}'))
     conn.commit()
 
-
-import requests
 
 
 def post_report(report):
