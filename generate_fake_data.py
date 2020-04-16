@@ -1,21 +1,10 @@
 import datetime as dt
-import os
 import random
 import uuid
-from random import randrange
 
-import psycopg2
 import pytz
 from faker import Faker
-from faker.providers.geo import Provider
 from logzero import logger
-from tqdm import trange
-
-import sk_municipality_provider
-
-Provider.land_coords = Provider.land_coords + sk_municipality_provider.LAND_COORDS
-
-
 
 # global time
 current_date = dt.datetime(2020, 1, 27, tzinfo=pytz.UTC)
@@ -23,128 +12,110 @@ current_date = dt.datetime(2020, 1, 27, tzinfo=pytz.UTC)
 # Time between events is currently uniformly distributed
 # Consider Poisson distribution or other
 MAX_NUM_SECS_BETWEEN_EVENTS = 2 * 60 * 60
-MAX_MOBILITY = 0.5
+MAX_MOBILITY = 1
 
 Faker.seed(0)
 fake = Faker('sk_SK')
 
 
-#%%
+class FakeReport:
+    def __init__(self, customer):
+        self.customer = customer
+
+    def sample(self):
+        """Create a sample event"""
+
+        global current_date  # consider an alternative
+        random_second = MAX_NUM_SECS_BETWEEN_EVENTS * random.random()
+        current_date = current_date + dt.timedelta(seconds=random_second)
+
+        temperature = 36 + 4 * (1 - self.customer.general_health) * random.random()
+        symptoms = {
+            'dry_cough': random.random() > self.customer.general_health,
+            'fever': temperature >= 38,
+            'temperature_under_38': temperature < 38,
+            'temperature_over_38': temperature >= 38,
+            'temperature_idk': False,
+            'difficulty_breathing': random.random() > self.customer.general_health,
+            'taste_and_smell_loss': random.random() > self.customer.general_health,
+            'headache': random.random() > self.customer.general_health,
+            'sore_throat': random.random() > self.customer.general_health,
+            'weakness': random.random() > self.customer.general_health,
+            "chest_pain": random.random() > self.customer.general_health,
+            "chills": random.random() > self.customer.general_health,
+            "sweating": random.random() > self.customer.general_health,
+            "stuffy_nose": random.random() > self.customer.general_health,
+            "runny_nose": random.random() > self.customer.general_health,
+            "diarrhea": random.random() > self.customer.general_health,
+            "watery_itchy_eyes": random.random() > self.customer.general_health,
+
+        }
+
+        now = dt.datetime.now(tz=pytz.UTC)
+        data = {
+            'customer_id': self.customer.customer_id,
+            'lat': float(fake.coordinate(
+                center=self.customer.home_location[0],
+                radius=self.customer.mobility
+            )),
+            'lon': float(fake.coordinate(
+                center=self.customer.home_location[1],
+                radius=self.customer.mobility
+            )),
+            # INFO: location must go away, for real data add lat - lon
+            **symptoms,
+
+            # 3. Other important information
+            'exposure_abroad': self.customer.exposure_abroad,
+            'exposure_to_quarantined_or_sick': self.customer.exposure_to_quarantined_or_sick,
+            'test_time': f"{now.year}-{now.month}-{now.day}",
+            "test_result_positive": random.random() > 0.99,
+        }
+
+        return data
+
 
 class FakeUser:
     def __init__(self):
-        self.id = str(uuid.uuid4())
+        self.customer_id = str(uuid.uuid4())
         self.home_location = fake.local_latlng(country_code='SK')
-        self.mobility =  MAX_MOBILITY * random.random()
+        self.mobility = MAX_MOBILITY * random.random()
         self.general_health = random.random()
         self.age = 18 + 80 * random.random()
         self.sex = random.choice(['M', 'F', 'Other'])
 
         self.exposure_abroad = random.random() > 0.9
         self.exposure_to_quarantined_or_sick = random.random() > 0.9
+        self.representation = None
 
-    def sample(self):
+    def get(self):
         """Create a sample event"""
 
-        global current_date # consider an alternative
-        random_second = MAX_NUM_SECS_BETWEEN_EVENTS * random.random()
-        current_date = current_date + dt.timedelta(seconds=random_second)
-        
-        temperature = 36 + 4 * (1 - self.general_health) * random.random()
-        symptoms = {
-            'dry_cough': random.random() > self.general_health,
-            'fever': temperature >= 38,
-            'temperature_under_38': temperature < 38,
-            'temperature_over_38': temperature >= 38,
-            'temperature_idk': False,
-            'difficulty_breathing': random.random() > self.general_health,
-            'headache': random.random() > self.general_health,
-            'taste_and_smell_loss': random.random() > self.general_health,
-            'headache': random.random() > self.general_health,
-            'sore_throat': random.random() > self.general_health,
-            'weakness': random.random() > self.general_health,
-            "chest_pain": random.random() > self.general_health,
-            "chills": random.random() > self.general_health,
-            "sweating": random.random() > self.general_health,
-            "stuffy_nose": random.random() > self.general_health,
-            "runny_nose": random.random() > self.general_health,
-            "diarrhea": random.random() > self.general_health,
-            "watery_itchy_eyes": random.random() > self.general_health,
+        if not self.representation:
+            global current_date  # consider an alternative
+            random_second = MAX_NUM_SECS_BETWEEN_EVENTS * random.random()
+            current_date = current_date + dt.timedelta(seconds=random_second)
 
-        }
-    
-        
-        asymptomatic = not any(symptoms.values())
-        data = {
-            'customer_id': self.id,
-            'age': int(self.age),
-            'sex': self.sex,
-            'lat': float(fake.coordinate(
-                 center=self.home_location[0],
-                 radius=self.mobility
-            )),
-            'lon': float(fake.coordinate(
-                 center=self.home_location[1],
-                 radius=self.mobility
-            )),
-            # INFO: location must go away, for real data add lat - lon
-            'location_iq': {"address": ""},
-            'symptoms': symptoms,
-             **symptoms,
-            "nonsymptomatic": asymptomatic,
+            underlying_symptoms = {
+                'cardiovascular': random.random() > self.general_health,
+                'respiratory': random.random() > self.general_health,
+                'smoker': random.random() > self.general_health,
+                'diabetes': random.random() > self.general_health,
+                'cancer': random.random() > self.general_health,
+                "renal_kidney": random.random() > self.general_health,
+                "liver": random.random() > self.general_health,
+                "immunodeficiency": random.random() > self.general_health,
+                "obesity": random.random() > self.general_health
+            }
 
-            # 3. Other important information
-            'exposure_abroad': self.exposure_abroad,
-            'exposure_to_quarantined_or_sick': self.exposure_to_quarantined_or_sick,
-            'test_time': dt.datetime.now(tz=pytz.UTC),
-            "test_result": random.random() > 0.99,
-        }
+            self.representation = {
+                'customer_id': self.customer_id,
+                'age': int(self.age),
+                'sex': self.sex,
+                **underlying_symptoms,
+            }
 
-        return data
-
-# def persist_datapoint(conn, data):
-#     INSERT_EVENT = """
-# INSERT INTO geotable (customer_id, timestamp, location, age, sex, symptoms, cough, fever, dificulty_breathing, weakness, headache, taste_and_smell_loss, nonsymptomatic)
-# VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-# """
-
-#     cursor = conn.cursor()
-
-# #   id serial PRIMARY KEY,
-# #   customer_id VARCHAR(36),
-# #   timestamp TIMESTAMP,
-# #   location geography(POINT, 4326),
-# #   age int,
-# #   sex VARCHAR(100),
-# #   symptoms json,
-# #   cough boolean,
-# #   fever boolean,
-# #   dificulty_breathing boolean,
-# #   weakness boolean,
-# #   headache boolean,
-# #   taste_and_smell_loss boolean,
-# #   nonsymptomatic boolean
-
-#     cursor.execute(
-#         INSERT_EVENT, (
-#             data['customer_id'],
-#             data['timestamp'],
-#             data['location']['lat'],
-#             data['location']['lng'],
-#             data['age'],
-#             data['sex'],
-#             data['dry_cough'],
-#             data['fever'],
-#             data['dificulty_breathing'],
-#             data['weakness'],
-#             data['headache'],
-#             data['taste_and_smell_loss'],
-#             data['nonsymptomatic'],
-#        )
-#     )
-#     conn.commit()
-
-
+        return self.representation
 
 
 def persist_datapoint(conn, content):
@@ -178,13 +149,13 @@ def persist_datapoint(conn, content):
     exposure_abroad = content["exposure_abroad"]
     exposure_to_quarantined_or_sick = content["exposure_to_quarantined_or_sick"]
     test_time = content["test_time"]
-    test_result = content["test_result"]
+    test_result_positive = content["test_result_positive"]
     # TODO REMOVE too detailed information BEFORE LIVE
-    location_iq = {"address": ""} #reverse_geocode_locationiq(lat, lon)
+    location_iq = {"address": ""}  # reverse_geocode_locationiq(lat, lon)
 
     # Remember to close SQL resources declared while running this function.
     # Keep any declared in global scope (e.g. pg_pool) for later reuse.
-    
+
     sql = f"""INSERT INTO symptom_report (
             -- STUFF
             customer_id, updated_at, 
@@ -211,7 +182,7 @@ def persist_datapoint(conn, content):
             {headache},{sore_throat},{weakness},{chest_pain},{chills},{sweating},{stuffy_nose},{runny_nose},
             {diarrhea},{watery_itchy_eyes},
             -- OTHER
-            {exposure_abroad},{exposure_to_quarantined_or_sick},(%s),{test_result},
+            {exposure_abroad},{exposure_to_quarantined_or_sick},(%s),{test_result_positive},
             -- LOCATION
             ST_SetSRID(ST_Point({lat}, {lon}), 4326)::geography, 
             %s
@@ -219,51 +190,50 @@ def persist_datapoint(conn, content):
 
     # TODO: fix all the SQL injections - either use SQLAlchemy or similar, or at least a dict with the value names,
     # definitely not string interpolations 
-    cursor.execute(sql, (customer_id, test_time,'{}'))
+    cursor.execute(sql, (customer_id, test_time, '{}'))
     conn.commit()
-
 
 
 import requests
 
-def post_datapoint(data):
-    res = requests.post('https://europe-west3-hackthevirus.cloudfunctions.net/insert_location', json=data)
-    breakpoint()
+
+def post_report(report):
+    res = requests.post('https://europe-west3-hackthevirus.cloudfunctions.net/user-report_symptoms', json=report)
+    print(res.status_code)
     print(res.json())
-    return res.json()
+
+
+def post_user(user):
+    res = requests.post('https://europe-west3-hackthevirus.cloudfunctions.net/user', json=user)
+    print(res.status_code)
+    print(res.json())
+
 
 if __name__ == "__main__":
     fake_users = [FakeUser()]
+    post_user(fake_users[-1].get())
 
     NUM_EVENTS = 15000
     R0_star = 1.01
-    new_user_proba = 0.01
+    new_user_proba = 1
 
-    conn = psycopg2.connect(
-        host=os.getenv('DB_HOST'),
-        dbname=os.getenv('DB_NAME'),
-        user=os.getenv('DB_USER'),
-        password=os.getenv('DB_PASSWORD')
-    )
+    # conn = psycopg2.connect(
+    #     host=os.getenv('DB_HOST'),
+    #     dbname=os.getenv('DB_NAME'),
+    #     user=os.getenv('DB_USER'),
+    #     password=os.getenv('DB_PASSWORD')
+    # )
 
     for _ in range(NUM_EVENTS):
         if new_user_proba > random.random():
-            # logger.debug('New user creation')
             fake_users.append(FakeUser())
             logger.debug(f'user {fake_users[-1].home_location}')
+            post_user(fake_users[-1].get())
 
         new_user_proba *= R0_star
 
         user = random.choice(fake_users)
-        # logger.debug(f'Selected user {user.home_location}')
-        data = user.sample()
-        # logger.info(data)
-        print(data)
-        
-        # posted = post_datapoint(data)
-        
-        persist_datapoint(conn, data)
+        data = FakeReport(user).sample()
 
-    # cursor = conn.cursor()
-    # cursor.execute('SELECT COUNT(*) FROM geotable;')
-    # print(cursor.fetchone()[0])
+        print(data)
+        post_report(data)
